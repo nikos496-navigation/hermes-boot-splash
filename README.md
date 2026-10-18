@@ -35,9 +35,12 @@
 
 1. 克隆或下载到任意目录（路径可以带空格）
 2. 双击 **`安装快捷方式.vbs`**
-   - 桌面出现 `Hermes`（带开屏）和 `Hermes(无动画)`（兜底直启）
-   - 原有快捷方式会备份成 `Hermes-原版.lnk`
+   - 桌面只生成一个 `Hermes`（带开屏动画），不留第二个图标
+   - 原来的 Hermes 快捷方式会备份到本目录 `backup\Hermes-原版.lnk`，桌面保持干净
+   - 早期版本遗留的 `Hermes(无动画).lnk` 会被自动清掉
 3. 双击 `Hermes`，第一页就是开屏
+
+想临时跳过开屏：直接运行 `%LOCALAPPDATA%\hermes\hermes-agent\apps\desktop\release\win-unpacked\Hermes.exe`。
 
 ## 操作
 
@@ -80,7 +83,7 @@
 | `preload.js` | 窄桥：`info()` / `exit()` / `ready` / `done` |
 | `启动 Hermes.vbs` | 快捷方式指向它；找不到 Electron 就直启本体 |
 | `预览动画.vbs` | 只放动画，不拉 Hermes |
-| `安装快捷方式.vbs` | 建快捷方式（原版备份） |
+| `安装快捷方式.vbs` | 建桌面快捷方式（只建一个；原版备份进 `backup/`） |
 | `docs/` | 截图 |
 
 ## 已知取舍
