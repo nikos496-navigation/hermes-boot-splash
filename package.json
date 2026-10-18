@@ -1,0 +1,7 @@
+{
+  "name": "hermes-splash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hermes 开屏动画：与 Hermes 本体并行启动，主窗口就绪即以淡出交棒",
+  "main": "main.js"
+}

@@ -1,0 +1,927 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Hermes</title>
+<!--
+  ============================================================================
+  HERMES 开屏 —— 多环节 HUD / GitHub 深色 + 金
+  ============================================================================
+  6 个环节，点右下角「继续」（或 → / 空格）推进，不再自动交棒。
+  数据是真的：profile / model / 技能数 / 记忆体积 / cron 条数，从 main.js 读盘后送进来。
+  改文案 → 下面的 STEPS 数组；改颜色 → :root。
+-->
+<style>
+  :root {
+    /* GitHub 深色主题（Hermes 的 GitHub 预设） */
+    --bg: #0d1117;
+    --bg-deep: #010409;
+    --panel: #161b22;
+    --line: #30363d;
+    --text: #e6edf3;
+    --dim: #7d8590;
+    --gold: #e3b341;
+    --gold-hi: #f2cc60;
+    --blue: #58a6ff;
+
+    --mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+    --sans: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --cn: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+
+    /* 圆环直径：整个正文按它等比缩放，换屏（含竖屏）都不会冲出圈 */
+    --d: min(70vh, 72vw);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    user-select: none;
+    cursor: default;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------------------------------------------------------------- 背景 */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(110% 80% at 50% -10%, #1b2432 0%, #0d1117 55%, #010409 100%),
+      var(--bg);
+  }
+
+  .grid { position: absolute; inset: 0; pointer-events: none; }
+  .grid i {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(230, 237, 243, 0.045);
+  }
+  .grid i:nth-child(1) { left: 12.5%; }
+  .grid i:nth-child(2) { left: 58%; }
+  .grid i:nth-child(3) { left: 88%; }
+  .grid em {
+    position: absolute;
+    left: 0; right: 0; top: 54%;
+    height: 1px;
+    background: rgba(230, 237, 243, 0.04);
+  }
+
+  .noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
+    background-size: 220px 220px;
+  }
+
+  .corner {
+    position: absolute;
+    width: 15px; height: 15px;
+    border: 0 solid rgba(230, 237, 243, 0.28);
+    pointer-events: none;
+  }
+  .corner.tl { top: 13px; left: 13px; border-top-width: 1px; border-left-width: 1px; }
+  .corner.tr { top: 13px; right: 13px; border-top-width: 1px; border-right-width: 1px; }
+  .corner.bl { bottom: 13px; left: 13px; border-bottom-width: 1px; border-left-width: 1px; }
+  .corner.br { bottom: 13px; right: 13px; border-bottom-width: 1px; border-right-width: 1px; }
+
+  /* ---------------------------------------------------------------- 布局 */
+  .frame {
+    position: absolute;
+    inset: 0;
+    padding: clamp(20px, 3.2vw, 58px) clamp(22px, 4.2vw, 78px) clamp(22px, 2.8vw, 50px);
+    display: flex;
+    flex-direction: column;
+    transition: opacity 420ms ease, transform 420ms ease;
+  }
+  .frame.out { opacity: 0; transform: scale(1.006); }
+
+  /* ---------------------------------------------------------------- 顶栏 */
+  .hud { position: relative; z-index: 3; }
+
+  .brand { line-height: 0.92; }
+  .brand div {
+    clip-path: inset(0 0 100% 0);
+    animation: unmask 640ms cubic-bezier(0.2, 0.9, 0.15, 1) forwards;
+  }
+  .brand .l1, .brand .l3 {
+    font-size: clamp(28px, 3vw, 54px);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--gold);
+  }
+  .brand .l2 {
+    margin: 9px 0 10px;
+    font-family: var(--mono);
+    font-size: clamp(9px, 0.74vw, 12px);
+    letter-spacing: 0.36em;
+    color: var(--dim);
+  }
+  .brand .l1 { animation-delay: 60ms; }
+  .brand .l2 { animation-delay: 200ms; }
+  .brand .l3 { animation-delay: 340ms; }
+  @keyframes unmask { to { clip-path: inset(0 0 0 0); } }
+
+  .skip {
+    position: absolute;
+    top: 0; right: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    background: none;
+    border: 0;
+    padding: 6px 2px;
+    cursor: pointer;
+    opacity: 0;
+    animation: fade 500ms 620ms ease forwards;
+    transition: color 160ms ease;
+  }
+  .skip:hover { color: var(--gold); }
+
+  .meta {
+    margin-top: clamp(22px, 2.8vw, 50px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--dim);
+    opacity: 0;
+    animation: fade 520ms 480ms ease forwards;
+  }
+  .meta b { color: var(--gold); font-weight: 400; }
+
+  .steps {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    opacity: 0;
+    animation: fade 520ms 540ms ease forwards;
+  }
+  .steps i {
+    display: block;
+    height: 2px;
+    width: clamp(26px, 3vw, 50px);
+    background: rgba(230, 237, 243, 0.22);
+    transition: background 320ms ease, opacity 320ms ease;
+  }
+  .steps i.done { background: rgba(227, 179, 65, 0.5); }
+  .steps i.on { background: var(--gold); }
+
+  @keyframes fade { to { opacity: 1; } }
+
+  /* ---------------------------------------------------------------- 中段 */
+  .stage {
+    position: relative;
+    flex: 1;
+    display: grid;
+    place-items: center;
+    z-index: 1;
+  }
+
+  .arcs {
+    position: absolute;
+    width: var(--d);
+    height: var(--d);
+    opacity: 0;
+    animation: fade 600ms 380ms ease forwards;
+  }
+  .thin { fill: none; stroke: rgba(230, 237, 243, 0.09); stroke-width: 1; }
+  .fat {
+    fill: none;
+    stroke: var(--gold);
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-dasharray: 1500 580;
+    opacity: 0.9;
+  }
+  .spin-slow { transform-origin: 400px 400px; animation: spin 120s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dot { fill: var(--blue); opacity: 0; }
+  .dot.d1 { animation: dotIn 600ms 900ms ease forwards; }
+  .dot.d2 { animation: dotIn 600ms 1100ms ease forwards; }
+  .dot.d3 { animation: dotIn 600ms 1300ms ease forwards; }
+  @keyframes dotIn { to { opacity: 0.9; } }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    width: min(92%, 1180px);
+    text-align: center;
+  }
+
+  /* 每一环节整体上浮入场（节点是重建的，所以每次都会重放） */
+  .content > * { animation: riseIn 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .content > .kicker { animation-delay: 0ms; }
+  .content > .headline { animation-delay: 40ms; }
+  .content > .rule { animation: fadeOnly 520ms 120ms ease both; }
+  .content > .sub { animation-delay: 160ms; }
+  .content > .rows { animation-delay: 220ms; }
+  .content > .cta { animation-delay: 340ms; }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+  /* 发丝线只能动 opacity：transform 留给它自己的 scaleX 展开 */
+  @keyframes fadeOnly {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: max(9px, calc(var(--d) * 0.0145));
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
+    color: var(--gold);
+    opacity: 0.85;
+  }
+
+  .headline {
+    margin: calc(var(--d) * 0.014) 0 0;
+    font-family: var(--cn);
+    font-weight: 700;
+    font-size: clamp(28px, calc(var(--d) * 0.1), 84px);
+    letter-spacing: 0.18em;
+    text-indent: 0.18em;
+    line-height: 1.14;
+    color: var(--gold);
+    text-shadow: 0 0 40px rgba(227, 179, 65, 0.18);
+  }
+  .ch { display: inline-block; overflow: hidden; vertical-align: bottom; }
+  .ch i {
+    display: inline-block;
+    font-style: normal;
+    transform: translateY(112%);
+    transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .ch.in i { transform: translateY(0); }
+
+  .rule {
+    height: 1px;
+    margin: calc(var(--d) * 0.032) 0 0;
+    background: rgba(230, 237, 243, 0.18);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 1s cubic-bezier(0.2, 0.9, 0.15, 1);
+  }
+  .rule.in { transform: scaleX(1); }
+
+  .sub {
+    position: relative;
+    margin-top: -0.7em;
+    display: inline-block;
+    padding: 0 calc(var(--d) * 0.026);
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: max(10px, calc(var(--d) * 0.0155));
+    letter-spacing: 0.46em;
+    text-indent: 0.46em;
+    color: var(--dim);
+  }
+
+  .rows {
+    width: calc(var(--d) * 0.58);
+    margin: calc(var(--d) * 0.042) auto 0;
+    text-align: left;
+  }
+  .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: calc(var(--d) * 0.03);
+    padding: calc(var(--d) * 0.011) 2px;
+    border-top: 1px solid rgba(230, 237, 243, 0.1);
+    opacity: 0;
+    animation: riseIn 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .row:last-child { border-bottom: 1px solid rgba(230, 237, 243, 0.1); }
+  .row .k {
+    font-family: var(--mono);
+    font-size: max(9px, calc(var(--d) * 0.0124));
+    letter-spacing: 0.24em;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .row .v {
+    font-family: var(--mono);
+    font-size: max(11px, calc(var(--d) * 0.0152));
+    letter-spacing: 0.06em;
+    color: var(--text);
+    text-align: right;
+  }
+  .row .v.gold { color: var(--gold); }
+
+  /* ---------------------------------------------------------------- 底栏 */
+  .foot {
+    position: relative;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 18px;
+    padding-bottom: 12px;
+    opacity: 0;
+    animation: fade 600ms 680ms ease forwards;
+  }
+
+  .foot .left {
+    justify-self: start;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    color: var(--dim);
+  }
+  .foot .left .hint {
+    display: block;
+    margin-top: 8px;
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    color: rgba(125, 133, 144, 0.75);
+  }
+
+  .mid { text-align: center; }
+  .mid .status {
+    font-family: var(--cn);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: var(--text);
+    transition: color 300ms ease;
+  }
+  .mid .status.warn { color: var(--gold); }
+  .mid .sub2 {
+    margin-top: 7px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.4em;
+    color: var(--dim);
+  }
+
+  .foot .right {
+    justify-self: end;
+    text-align: right;
+  }
+
+  /* 主按钮：细长一条，圆环里、正文下方 */
+  .cta {
+    margin-top: calc(var(--d) * 0.052);
+    display: flex;
+    justify-content: center;
+  }
+
+  .next {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    width: calc(var(--d) * 0.44);
+    height: max(30px, calc(var(--d) * 0.042));
+    padding: 0 16px;
+    background: rgba(227, 179, 65, 0.015);
+    border: 1px solid rgba(227, 179, 65, 0.34);
+    color: var(--gold);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    cursor: pointer;
+    overflow: hidden;
+    transition: background 240ms ease, border-color 240ms ease, color 200ms ease;
+  }
+
+  /* 左端小方块 */
+  .next .mk {
+    flex: none;
+    width: 4px;
+    height: 4px;
+    background: currentColor;
+    opacity: 0.6;
+  }
+
+  /* 中间虚线引导 */
+  .next .ld {
+    flex: 1;
+    height: 0;
+    border-bottom: 1px dotted rgba(227, 179, 65, 0.34);
+    transform: translateY(-3px);
+    transition: border-color 240ms ease;
+  }
+
+  .next i { font-style: normal; text-indent: 0; font-size: 13px; line-height: 1; }
+
+  /* 悬停：一道光泽从左扫到右 */
+  .next::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(
+      90deg,
+      rgba(227, 179, 65, 0) 0%,
+      rgba(227, 179, 65, 0.2) 40%,
+      rgba(255, 240, 190, 0.55) 50%,
+      rgba(227, 179, 65, 0.2) 60%,
+      rgba(227, 179, 65, 0) 100%
+    );
+    transform: translateX(-101%);
+    pointer-events: none;
+  }
+  /* 下沿的线从头填到尾 */
+  .next::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 1px;
+    width: 0;
+    background: var(--gold-hi);
+    box-shadow: 0 0 8px rgba(242, 204, 96, 0.65);
+    transition: width 560ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    pointer-events: none;
+  }
+
+  .next:hover {
+    background: rgba(227, 179, 65, 0.05);
+    border-color: rgba(227, 179, 65, 0.72);
+  }
+  .next:hover::before { animation: sheen 760ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards; }
+  .next:hover::after { width: 100%; }
+
+  @keyframes sheen {
+    from { transform: translateX(-101%); }
+    to { transform: translateX(101%); }
+  }
+
+  .next.wait {
+    color: var(--dim);
+    border-color: rgba(125, 133, 144, 0.35);
+  }
+  .next.wait .ld { border-bottom-color: rgba(125, 133, 144, 0.3); }
+  .next.wait::after { background: var(--dim); }
+  .next.wait:hover { background: transparent; border-color: rgba(125, 133, 144, 0.5); }
+
+  .legal {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 8.5px;
+    letter-spacing: 0.26em;
+    color: rgba(125, 133, 144, 0.7);
+  }
+
+  /* 底部进度 */
+  .bar {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 2px;
+    background: rgba(230, 237, 243, 0.07);
+  }
+  .bar b {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(227, 179, 65, 0.5), var(--gold));
+    transition: width 700ms cubic-bezier(0.25, 0.8, 0.2, 1);
+  }
+
+  /* 每次换环节扫一道光：一条带光晕的扫描带从上往下压过整屏 */
+  .scan {
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    pointer-events: none;
+    opacity: 0;
+    overflow: hidden;
+  }
+  .scan.go { opacity: 1; }
+  .scan-band {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -26vh;
+    height: 26vh;
+    background: linear-gradient(
+      to bottom,
+      rgba(227, 179, 65, 0) 0%,
+      rgba(227, 179, 65, 0.04) 52%,
+      rgba(227, 179, 65, 0.14) 86%,
+      rgba(255, 231, 160, 0.5) 98%,
+      rgba(255, 255, 255, 0.85) 100%
+    );
+    box-shadow: 0 0 28px rgba(227, 179, 65, 0.22);
+  }
+  .scan-band::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: rgba(255, 240, 200, 0.9);
+  }
+  .scan.go .scan-band { animation: sweep 860ms cubic-bezier(0.45, 0.05, 0.55, 0.95) forwards; }
+  @keyframes sweep {
+    0% { top: -26vh; opacity: 0; }
+    10% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { top: 100vh; opacity: 0; }
+  }
+
+  /* 预览：浏览器里也能看 */
+  body.preview .screen { position: absolute; inset: 0; }
+  .screen { position: absolute; inset: 0; }
+</style>
+
+<div class="screen">
+  <div class="vignette"></div>
+  <div class="grid"><i></i><i></i><i></i><em></em></div>
+  <div class="noise"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <div class="frame" id="frame">
+    <header class="hud">
+      <div class="brand">
+        <div class="l1">HERMES</div>
+        <div class="l2">NOUS RESEARCH</div>
+        <div class="l3">AGENT OS</div>
+      </div>
+      <button class="skip" id="skip">SKIP ›</button>
+      <div class="meta">
+        <span>REV 0.1.0</span><span>·</span><span>BOOT PROFILE</span><b id="clock">--:--:--</b>
+      </div>
+      <div class="steps" id="steps"></div>
+    </header>
+
+    <main class="stage">
+      <svg class="arcs" viewBox="0 0 800 800" aria-hidden="true">
+        <circle class="thin" cx="400" cy="400" r="352" />
+        <circle class="thin" cx="400" cy="400" r="236" />
+        <g class="spin-slow"><circle class="fat" cx="400" cy="400" r="352" /></g>
+        <circle class="dot d1" cx="400" cy="112" r="7" />
+        <circle class="dot d2" cx="676" cy="486" r="6" />
+        <circle class="dot d3" cx="228" cy="600" r="5" />
+      </svg>
+
+      <div class="content" id="content"></div>
+    </main>
+
+    <footer class="foot">
+      <div class="left">
+        <span id="stepLabel">[ 01 / 06 ]</span>
+        <span class="hint">→ / 空格 继续 · ← 返回 · ESC 直接进入</span>
+      </div>
+      <div class="mid">
+        <div class="status" id="status">正在唤醒 Hermes…</div>
+        <div class="sub2" id="sub2">AWAITING AGENT CORE</div>
+      </div>
+      <div class="right">
+        <div class="legal">POWERED BY NOUS RESEARCH</div>
+      </div>
+    </footer>
+
+    <div class="bar"><b id="bar"></b></div>
+  </div>
+  <div class="scan" id="scan"><div class="scan-band"></div></div>
+</div>
+
+<script>
+  const preview = location.search.includes('preview')
+  const $ = (id) => document.getElementById(id)
+  const frame = $('frame')
+  const content = $('content')
+  const stepsBar = $('steps')
+  const stepLabel = $('stepLabel')
+  const statusEl = $('status')
+  const sub2 = $('sub2')
+  const bar = $('bar')
+  const clock = $('clock')
+  let nextBtn = null
+  let nextLabel = null
+  const scan = $('scan')
+
+  const TOTAL = 6
+  let idx = 0
+  let ready = false
+  let pendingEnter = false
+  let info = { profile: 'default', model: '—', provider: '—', skills: 0, memoryKb: 0, userKb: 0, cron: 0 }
+
+  if (preview) document.body.classList.add('preview')
+
+  // ---------------------------------------------------------------- 时钟
+  const tick = () => {
+    const d = new Date()
+    const p = (n) => String(n).padStart(2, '0')
+    clock.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+  }
+  tick()
+  setInterval(tick, 1000)
+
+  // ---------------------------------------------------------------- 分镜
+  function buildSteps() {
+    const kb = (n) => (n ? n.toFixed(1) + ' KB' : '—')
+    return [
+      {
+        kicker: 'BOOT SEQUENCE',
+        cn: '系统启动',
+        en: 'SYSTEM BOOT',
+        rows: [
+          ['CORE', ready ? 'ONLINE' : 'BOOTING', true],
+          ['PROFILE', info.profile.toUpperCase(), false],
+          ['MODEL', String(info.model).toUpperCase(), false],
+        ],
+        status: () => (ready ? '核心在线' : '核心启动中'),
+        sub2: () => (ready ? 'CORE ONLINE' : 'AWAITING AGENT CORE'),
+      },
+      {
+        kicker: 'IDENTITY',
+        cn: '身份确认',
+        en: 'IDENTITY VERIFIED',
+        rows: [
+          ['PROFILE', info.profile, false],
+          ['MODEL', String(info.model).toUpperCase(), true],
+          ['PROVIDER', String(info.provider).toUpperCase(), false],
+          ['PLATFORM', info.platform || 'WINDOWS', false],
+        ],
+        status: () => '身份已确认',
+        sub2: () => 'IDENTITY CONFIRMED',
+      },
+      {
+        kicker: 'MEMORY',
+        cn: '记忆载入',
+        en: 'MEMORY LOADED',
+        rows: [
+          ['AGENT MEMORY', kb(info.memoryKb), true],
+          ['USER PROFILE', kb(info.userKb), false],
+          ['CARRY OVER', 'PERSISTENT', false],
+        ],
+        status: () => '上下文已恢复',
+        sub2: () => 'CONTEXT RESTORED',
+      },
+      {
+        kicker: 'TOOLBELT',
+        cn: '能力挂载',
+        en: 'TOOLS MOUNTED',
+        rows: [
+          ['SKILLS', String(info.skills), true],
+          ['CRON JOBS', String(info.cron), false],
+          ['SHELL', 'BASH / WINDOWS', false],
+          ['SCREENS', String(info.displays || 1), false],
+        ],
+        status: () => '能力已挂载',
+        sub2: () => 'SKILLS MOUNTED',
+      },
+      {
+        kicker: 'CHANNELS',
+        cn: '链路接通',
+        en: 'CHANNELS LINKED',
+        rows: [
+          ['DESKTOP', 'LINKED', true],
+          ['GATEWAY', 'RUNNING', false],
+          ['WECHAT', 'BOUND', false],
+        ],
+        status: () => '链路已建立',
+        sub2: () => 'ALL CHANNELS UP',
+      },
+      {
+        kicker: 'READY',
+        cn: '系统就绪',
+        en: 'SYSTEM READY',
+        rows: [
+          ['CORE', ready ? 'ONLINE' : 'STARTING', true],
+          ['PRESS', 'ENTER / CLICK', false],
+        ],
+        status: () => (ready ? '系统就绪 · 交棒' : '核心仍在启动…'),
+        sub2: () => (ready ? 'HANDING OVER' : 'PLEASE STAND BY'),
+        enter: true,
+      },
+    ]
+  }
+
+  function setHeadline(text) {
+    const hl = document.createElement('h1')
+    hl.className = 'headline'
+    ;[...text].forEach((ch, i) => {
+      const wrap = document.createElement('span')
+      wrap.className = 'ch'
+      const inner = document.createElement('i')
+      inner.textContent = ch
+      inner.style.transitionDelay = 40 + i * 55 + 'ms'
+      wrap.appendChild(inner)
+      hl.appendChild(wrap)
+      requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')))
+    })
+    return hl
+  }
+
+  function render(dir = 1) {
+    const s = buildSteps()[idx]
+
+    // 内容整块重建，所以每次的入场动画都会重放
+    content.innerHTML = ''
+    const kicker = document.createElement('div')
+    kicker.className = 'kicker'
+    kicker.textContent = s.kicker
+    content.appendChild(kicker)
+    content.appendChild(setHeadline(s.cn))
+
+    const rule = document.createElement('div')
+    rule.className = 'rule'
+    content.appendChild(rule)
+    requestAnimationFrame(() => requestAnimationFrame(() => rule.classList.add('in')))
+
+    const sub = document.createElement('div')
+    sub.className = 'sub'
+    sub.textContent = s.en
+    content.appendChild(sub)
+
+    const rows = document.createElement('div')
+    rows.className = 'rows'
+    s.rows.forEach(([k, v, gold], i) => {
+      const row = document.createElement('div')
+      row.className = 'row'
+      row.style.animationDelay = 240 + i * 70 + 'ms'
+      const kk = document.createElement('span')
+      kk.className = 'k'
+      kk.textContent = k
+      const vv = document.createElement('span')
+      vv.className = 'v' + (gold ? ' gold' : '')
+      vv.textContent = v
+      row.appendChild(kk)
+      row.appendChild(vv)
+      rows.appendChild(row)
+    })
+    content.appendChild(rows)
+
+    // 栏位
+    stepLabel.textContent = '[ ' + String(idx + 1).padStart(2, '0') + ' / 0' + TOTAL + ' ] ' + s.kicker.replace(/^\d+ — /, '')
+    statusEl.textContent = s.status()
+    statusEl.classList.toggle('warn', !ready && idx === TOTAL - 1)
+    sub2.textContent = s.sub2()
+    bar.style.width = Math.round(((idx + 1) / TOTAL) * 100) + '%'
+
+    ;[...stepsBar.children].forEach((el, i) => {
+      el.className = i < idx ? 'done' : i === idx ? 'on' : ''
+    })
+
+    const last = idx === TOTAL - 1
+
+    // 主按钮：放在圆环里、正文下方
+    const cta = document.createElement('div')
+    cta.className = 'cta'
+    const btn = document.createElement('button')
+    btn.className = 'next'
+    const mark = document.createElement('span')
+    mark.className = 'mk'
+    const label = document.createElement('span')
+    const leader = document.createElement('span')
+    leader.className = 'ld'
+    const arrow = document.createElement('i')
+    arrow.textContent = '›'
+    btn.appendChild(mark)
+    btn.appendChild(label)
+    btn.appendChild(leader)
+    btn.appendChild(arrow)
+    cta.appendChild(btn)
+    content.appendChild(cta)
+
+    label.textContent = last ? (ready ? '进入 HERMES' : '等待核心…') : '继续'
+    btn.classList.toggle('wait', last && !ready)
+    btn.addEventListener('click', () => { pauseAuto(); advance() })
+
+    nextBtn = btn
+    nextLabel = label
+
+    // 换环节扫一道光
+    scan.classList.remove('go')
+    void scan.offsetWidth
+    scan.classList.add('go')
+  }
+
+  function goto(next) {
+    if (next < 0 || next >= TOTAL) return
+    idx = next
+    render(idx > next ? -1 : 1)
+  }
+
+  function advance() {
+    if (idx < TOTAL - 1) {
+      goto(idx + 1)
+      return
+    }
+    // 最后一环：就绪就交棒，没就绪就等
+    if (ready) exitSplash()
+    else {
+      pendingEnter = true
+      statusEl.textContent = '核心仍在启动，请稍候…'
+      statusEl.classList.add('warn')
+      sub2.textContent = 'WAITING FOR CORE'
+      nextLabel.textContent = '等待核心…'
+    }
+  }
+
+  function exitSplash() {
+    if (preview) {
+      // 预览时不真关窗：淡出后从头再走一遍
+      frame.classList.add('out')
+      setTimeout(() => {
+        frame.classList.remove('out')
+        idx = 0
+        render()
+      }, 900)
+      return
+    }
+    frame.classList.add('out')
+    if (window.splash) window.splash.exit()
+  }
+
+  // ---------------------------------------------------------------- 事件
+  let autoTimerId = null
+  function pauseAuto() {
+    if (autoTimerId) {
+      clearInterval(autoTimerId)
+      autoTimerId = null
+    }
+  }
+
+  nextBtn = null
+  $('skip').addEventListener('click', () => { pauseAuto(); exitSplash() })
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault()
+      pauseAuto()
+      advance()
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      pauseAuto()
+      if (idx > 0) goto(idx - 1)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      pauseAuto()
+      exitSplash()
+    }
+  })
+
+  // 触控板/鼠标横向滑动也能翻页
+  let wheelLock = 0
+  window.addEventListener('wheel', (e) => {
+    const now = Date.now()
+    if (now - wheelLock < 700 || Math.abs(e.deltaY) < 24) return
+    wheelLock = now
+    pauseAuto()
+    if (e.deltaY > 0) advance()
+    else if (idx > 0) goto(idx - 1)
+  }, { passive: true })
+
+  // ---------------------------------------------------------------- 启动
+  for (let i = 0; i < TOTAL; i++) stepsBar.appendChild(document.createElement('i'))
+
+  const boot = async () => {
+    if (window.splash && window.splash.info) {
+      try { info = await window.splash.info() } catch {}
+    }
+    render()
+
+    if (window.splash && !preview) {
+      window.splash.onReady(() => {
+        ready = true
+        // 当前环节里的状态字样要跟着变；第 1 环和最后一环干脆整块重画
+        if (idx === 0 || idx === TOTAL - 1) {
+          render()
+          if (idx === TOTAL - 1 && pendingEnter) setTimeout(exitSplash, 420)
+          return
+        }
+        const s = buildSteps()[idx]
+        statusEl.textContent = s.status()
+        statusEl.classList.remove('warn')
+        sub2.textContent = s.sub2()
+      })
+      window.splash.onDone(() => frame.classList.add('out'))
+    } else {
+      // 预览：4.2 秒自动往前推一轮；一旦有人操作就停下，交给你自己翻
+      autoTimerId = setInterval(() => {
+        if (idx < TOTAL - 1) goto(idx + 1)
+        else { idx = 0; ready = true; render() }
+      }, 4200)
+      setTimeout(() => { ready = true; render() }, 1200)
+    }
+  }
+
+  boot()
+</script>

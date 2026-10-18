@@ -1,0 +1,15 @@
+# 运行时产物
+last-display.json
+*.log
+
+# 早期版本与 Hermes 自带素材（不入库）
+legacy/
+assets/
+
+# 系统垃圾
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 依赖（本项目不装依赖，留个兜底）
+node_modules/
